@@ -1,0 +1,8 @@
+.git
+.gitlab-ci.yml
+.env*
+docs
+deploy
+README.md
+__pycache__
+*.pyc
