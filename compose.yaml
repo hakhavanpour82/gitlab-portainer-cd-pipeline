@@ -1,0 +1,10 @@
+# Local development only. Production is deployed through Portainer
+# using deploy/stack.template.yaml.
+services:
+  backend:
+    build:
+      context: .
+    container_name: backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
