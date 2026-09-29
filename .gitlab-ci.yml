@@ -1,0 +1,54 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  IMAGE_TAG: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+  BACKEND_BIND_IP: "10.0.0.2"
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "development"'
+
+test:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install --no-cache-dir -r requirements.txt
+    - python -m compileall app
+
+build:
+  stage: build
+  image: docker:cli
+  services:
+    - name: docker:dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
+  script:
+    - docker build --pull --build-arg APP_VERSION="$CI_COMMIT_SHORT_SHA" -t "$IMAGE_TAG" .
+    - docker push "$IMAGE_TAG"
+
+deploy:
+  stage: deploy
+  image: alpine:3.22
+  environment:
+    name: development
+  resource_group: development
+  before_script:
+    - apk add --no-cache curl jq gettext
+  script:
+    - export IMAGE_TAG BACKEND_BIND_IP
+    - envsubst '${IMAGE_TAG} ${BACKEND_BIND_IP}' < deploy/stack.template.yaml > stack.yaml
+    - |
+      jq -n --rawfile stack stack.yaml \
+        '{StackFileContent: $stack, PullImage: true, Prune: false}' \
+      | curl --fail-with-body -sS -X PUT \
+          -H "X-API-Key: $PORTAINER_API_KEY" \
+          -H "Content-Type: application/json" \
+          "$PORTAINER_URL/api/stacks/$PORTAINER_STACK_ID?endpointId=$PORTAINER_ENDPOINT_ID" \
+          -d @-
